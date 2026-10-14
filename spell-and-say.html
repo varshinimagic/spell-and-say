@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spell & Say</title>
+<style>
+  :root{
+    --bg:#fef6e4; --card:#ffffff; --ink:#33272a; --accent:#f582ae;
+    --accent2:#8bd3dd; --accent3:#f3d2c1; --good:#43aa8b;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#221f26; --card:#2e2a33; --ink:#f4f1ea;
+    }
+  }
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Comic Sans MS","Trebuchet MS",Verdana,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .card{
+    background:var(--card); border-radius:28px; padding:32px 24px;
+    max-width:480px; width:100%; box-shadow:0 10px 0 var(--accent3);
+    text-align:center;
+  }
+  h1{margin:0 0 4px; font-size:1.6rem;}
+  p.sub{margin:0 0 20px; opacity:.75; font-size:.95rem;}
+  input{
+    width:100%; font-size:1.6rem; text-align:center; padding:14px;
+    border-radius:16px; border:3px solid var(--accent2); outline:none;
+    letter-spacing:2px; background:transparent;
+    color:var(--ink);
+  }
+  input:focus{border-color:var(--accent);}
+  button{
+    margin-top:16px; font-size:1.2rem; font-weight:bold; padding:14px 28px;
+    border:none; border-radius:16px; background:var(--accent); color:white;
+    cursor:pointer; width:100%;
+  }
+  button:active{transform:scale(0.97);}
+  button:disabled{opacity:.5;}
+  .letters{
+    margin-top:22px; display:flex; flex-wrap:wrap; justify-content:center; gap:8px;
+    min-height:56px;
+  }
+  .letter{
+    background:var(--accent2); color:#12303a; font-weight:bold; font-size:1.4rem;
+    width:44px; height:44px; border-radius:12px; display:flex; align-items:center;
+    justify-content:center; transition:transform .15s;
+  }
+  .letter.active{transform:scale(1.25); background:var(--accent);color:white;}
+  .word{
+    margin-top:18px; font-size:2rem; font-weight:bold; color:var(--good);
+    min-height:2.4rem;
+  }
+  .picture{
+    font-size:5rem; line-height:1; min-height:1.3em; margin-top:6px;
+  }
+  .hint{margin-top:16px; font-size:.85rem; opacity:.6;}
+  .speed{margin-top:14px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:.9rem;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🐝 Spell &amp; Say</h1>
+  <p class="sub">Type letters. Tap the button. Hear it spelled and said.</p>
+  <div style="display:flex; gap:8px;">
+    <input id="wordInput" maxlength="20" placeholder="cat" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:1;">
+    <button id="micBtn" title="Speak the letters" style="width:56px; flex:none; margin-top:0; padding:0; font-size:1.4rem;">🎤</button>
+    <button id="photoBtn" title="Take a photo of a word" style="width:56px; flex:none; margin-top:0; padding:0; font-size:1.4rem;">📷</button>
+  </div>
+  <input id="photoInput" type="file" accept="image/*" capture="environment" style="display:none;">
+  <button id="sayBtn">🔊 Spell it!</button>
+  <div class="letters" id="letters"></div>
+  <div class="picture" id="pictureOut"></div>
+  <div class="word" id="wordOut"></div>
+  <div class="word" id="teluguOut" style="color:var(--accent); font-size:1.4rem;"></div>
+  <div class="speed">
+    <label for="rate">Slow</label>
+    <input id="rate" type="range" min="0.5" max="1.1" step="0.1" value="0.8" style="width:110px;">
+    <label for="rate">Fast</label>
+  </div>
+  <div class="hint">Example: type "bag" → hears "B... A... G... bag"</div>
+  <div class="hint" id="status" style="color:#d64550;"></div>
+</div>
+<script>
+const input = document.getElementById('wordInput');
+const btn = document.getElementById('sayBtn');
+const lettersDiv = document.getElementById('letters');
+const wordOut = document.getElementById('wordOut');
+const pictureOut = document.getElementById('pictureOut');
+const teluguOut = document.getElementById('teluguOut');
+const rateSlider = document.getElementById('rate');
+
+// Simple picture dictionary for common early-reader words
+const PICTURES = {
+  cat:'🐱', dog:'🐶', pig:'🐷', cow:'🐮', hen:'🐔', fox:'🦊', bat:'🦇', owl:'🦉',
+  fish:'🐟', bird:'🐦', bee:'🐝', ant:'🐜', frog:'🐸', duck:'🦆', lion:'🦁',
+  bear:'🐻', rat:'🐀', mouse:'🐭', horse:'🐴', sheep:'🐑', goat:'🐐', hen2:'🐔',
+  pencil:'✏️', pen:'🖊️', book:'📖', bag:'👜', hat:'🎩', cap:'🧢', cup:'☕',
+  ball:'⚽', box:'📦', bed:'🛏️', chair:'🪑', clock:'🕒', door:'🚪', key:'🔑',
+  sun:'☀️', moon:'🌙', star:'⭐', cloud:'☁️', rain:'🌧️', tree:'🌳', flower:'🌸',
+  leaf:'🍃', apple:'🍎', orange:'🍊', banana:'🍌', grape:'🍇', mango:'🥭',
+  egg:'🥚', milk:'🥛', bread:'🍞', cake:'🎂', rice:'🍚', umbrella:'☂️',
+  car:'🚗', bus:'🚌', bike:'🚲', boat:'⛵', train:'🚆', plane:'✈️',
+  house:'🏠', school:'🏫', class:'🧑‍🏫', ball2:'🏀', shoe:'👟', sock:'🧦',
+  shirt:'👕', clock2:'⏰', kite:'🪁', drum:'🥁', gift:'🎁', heart:'❤️',
+  smile:'😊', hand:'✋', eye:'👁️', ear:'👂', nose:'👃', foot:'🦶',
+  mom:'👩', dad:'👨', baby:'👶', boy:'👦', girl:'👧', she:'👧', he:'👦'
+};
+function lookupPicture(word){
+  return PICTURES[word.toLowerCase()] || '';
+}
+
+// Telugu meanings for common early-reader words
+const TELUGU = {
+  cat:'పిల్లి', dog:'కుక్క', pig:'పంది', cow:'ఆవు', hen:'కోడి', fox:'నక్క', bat:'గబ్బిలం', owl:'గుడ్లగూబ',
+  fish:'చేప', bird:'పక్షి', bee:'తేనెటీగ', ant:'చీమ', frog:'కప్ప', duck:'బాతు', lion:'సింహం',
+  bear:'ఎలుగుబంటి', rat:'ఎలుక', mouse:'ఎలుక', horse:'గుర్రం', sheep:'గొర్రె', goat:'మేక',
+  pencil:'పెన్సిల్', pen:'పెన్ను', book:'పుస్తకం', bag:'సంచి', hat:'టోపీ', cap:'టోపీ', cup:'కప్పు',
+  ball:'బంతి', box:'పెట్టె', bed:'మంచం', chair:'కుర్చీ', clock:'గడియారం', door:'తలుపు', key:'తాళం చెవి',
+  sun:'సూర్యుడు', moon:'చంద్రుడు', star:'నక్షత్రం', cloud:'మేఘం', rain:'వర్షం', tree:'చెట్టు', flower:'పువ్వు',
+  leaf:'ఆకు', apple:'ఆపిల్', orange:'నారింజ', banana:'అరటిపండు', grape:'ద్రాక్ష', mango:'మామిడి',
+  egg:'గుడ్డు', milk:'పాలు', bread:'రొట్టె', cake:'కేక్', rice:'అన్నం', umbrella:'గొడుగు',
+  car:'కారు', bus:'బస్సు', bike:'సైకిల్', boat:'పడవ', train:'రైలు', plane:'విమానం',
+  house:'ఇల్లు', school:'బడి', class:'తరగతి', shoe:'చెప్పు', sock:'సాక్సు',
+  shirt:'చొక్కా', kite:'గాలిపటం', drum:'డ్రమ్', gift:'బహుమతి', heart:'హృదయం',
+  smile:'నవ్వు', hand:'చేయి', eye:'కన్ను', ear:'చెవి', nose:'ముక్కు', foot:'పాదం',
+  mom:'అమ్మ', dad:'నాన్న', baby:'పసిపాప', boy:'అబ్బాయి', girl:'అమ్మాయి', she:'ఆమె', he:'అతను',
+  water:'నీరు', food:'ఆహారం', good:'మంచి', big:'పెద్ద', small:'చిన్న', who:'ఎవరు'
+};
+function lookupTelugu(word){
+  return TELUGU[word.toLowerCase()] || '';
+}
+const statusDiv = document.getElementById('status');
+
+const supported = ('speechSynthesis' in window);
+let voices = [];
+let chosenVoice = null;
+const keepAlive = []; // prevents Chrome from garbage-collecting utterances mid-speech
+
+function loadVoices(){
+  voices = speechSynthesis.getVoices();
+  chosenVoice = voices.find(v => v.lang && v.lang.startsWith('en')) || voices[0] || null;
+}
+if(supported){
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+function speak(text, rate, lang){
+  lang = lang || 'en-US';
+  return new Promise((resolve)=>{
+    if(!supported){ resolve(); return; }
+    try{
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = rate;
+      u.pitch = 1;
+      u.lang = lang;
+      if(lang === 'en-US' && chosenVoice) u.voice = chosenVoice;
+      let done = false;
+      const finish = ()=>{ if(!done){ done = true; resolve(); } };
+      u.onend = finish;
+      u.onerror = finish;
+      // Safety timeout in case the browser never fires end/error
+      setTimeout(finish, Math.max(1200, text.length * 400));
+      keepAlive.push(u);
+      speechSynthesis.speak(u);
+    }catch(e){ resolve(); }
+  });
+}
+
+async function run(){
+  const raw = input.value.trim();
+  if(!raw) return;
+  const word = raw.replace(/[^a-zA-Z]/g,'');
+  if(!word) return;
+  const rate = parseFloat(rateSlider.value);
+
+  if(!supported){
+    statusDiv.textContent = "Sorry, this browser can't speak out loud. Try Chrome or Safari.";
+    return;
+  }
+  statusDiv.textContent = '';
+
+  btn.disabled = true;
+  keepAlive.length = 0;
+  speechSynthesis.cancel();
+  lettersDiv.innerHTML = '';
+  wordOut.textContent = '';
+  pictureOut.textContent = '';
+  teluguOut.textContent = '';
+
+  const chips = [];
+  for(const ch of word){
+    const span = document.createElement('div');
+    span.className = 'letter';
+    span.textContent = ch;
+    lettersDiv.appendChild(span);
+    chips.push(span);
+  }
+
+  for(let i=0;i<word.length;i++){
+    chips[i].classList.add('active');
+    await speak(word[i], rate);
+    chips[i].classList.remove('active');
+  }
+
+  wordOut.textContent = word;
+  pictureOut.textContent = lookupPicture(word);
+  await speak(word, rate);
+
+  const telugu = lookupTelugu(word);
+  if(telugu){
+    teluguOut.textContent = telugu;
+    await speak(telugu, rate * 0.9, 'te-IN');
+  }
+
+  btn.disabled = false;
+}
+
+btn.addEventListener('click', run);
+input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') run(); });
+window.addEventListener('load', ()=>{ input.focus(); });
+
+// --- Voice input: child speaks letters or the word, we clean it up and spell it ---
+const micBtn = document.getElementById('micBtn');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if(!SR){
+  micBtn.addEventListener('click', ()=>{
+    statusDiv.style.color = '#d64550';
+    statusDiv.textContent = "Voice input isn't available in this browser. Open this page in Chrome (not the Claude app) to use the mic.";
+  });
+} else {
+  const recog = new SR();
+  recog.lang = 'en-US';
+  recog.interimResults = false;
+  recog.maxAlternatives = 1;
+  let listening = false;
+
+  recog.onstart = ()=>{
+    listening = true;
+    micBtn.textContent = '🔴';
+    statusDiv.style.color = '#43aa8b';
+    statusDiv.textContent = 'Listening... say the letters, like O R A N G E';
+  };
+  recog.onerror = (e)=>{
+    statusDiv.style.color = '#d64550';
+    if(e && e.error === 'not-allowed'){
+      statusDiv.textContent = 'Microphone blocked. Open this page in Chrome (not inside the Claude app) and allow microphone access.';
+    } else if(e && e.error === 'no-speech'){
+      statusDiv.textContent = "Didn't hear anything. Try again, closer to the mic.";
+    } else {
+      statusDiv.textContent = "Didn't catch that (" + (e.error || 'error') + "). Try again, or type the word instead.";
+    }
+  };
+  recog.onend = ()=>{
+    listening = false;
+    micBtn.textContent = '🎤';
+  };
+  recog.onresult = (e)=>{
+    const heard = e.results[0][0].transcript || '';
+    const cleaned = heard.replace(/[^a-zA-Z]/g,'');
+    if(cleaned){
+      input.value = cleaned;
+      statusDiv.style.color = '#43aa8b';
+      statusDiv.textContent = 'Heard: "' + heard + '"';
+      run();
+    } else {
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = "Didn't catch any letters. Try again.";
+    }
+  };
+
+  micBtn.addEventListener('click', async ()=>{
+    if(listening){ recog.stop(); return; }
+    speechSynthesis.cancel();
+    statusDiv.style.color = '#43aa8b';
+    statusDiv.textContent = 'Asking for microphone access...';
+
+    try{
+      if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        stream.getTracks().forEach(t => t.stop());
+      }
+    }catch(e){
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = 'Microphone blocked (' + (e.name || 'error') + '). Open this page in Chrome (not the Claude app) and allow microphone access when asked.';
+      return;
+    }
+
+    try{ recog.start(); }
+    catch(e){
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = 'Could not start listening (' + (e.name || e.message || 'unknown error') + ').';
+    }
+  });
+}
+
+// --- Photo input: take a photo of a textbook word, Claude reads it, we spell it ---
+const photoBtn = document.getElementById('photoBtn');
+const photoInput = document.getElementById('photoInput');
+
+photoBtn.addEventListener('click', async ()=>{
+  if(!window.claude || !window.claude.use){
+    statusDiv.style.color = '#d64550';
+    statusDiv.textContent = "Photo reading isn't available here. Try typing or the mic instead.";
+    return;
+  }
+  photoInput.click();
+});
+
+photoInput.addEventListener('change', async ()=>{
+  const file = photoInput.files && photoInput.files[0];
+  photoInput.value = '';
+  if(!file) return;
+
+  statusDiv.style.color = '#43aa8b';
+  statusDiv.textContent = 'Reading the photo...';
+
+  try{
+    const sample = await claude.use('sample');
+    if(!sample){
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = "Photo reading isn't available here. Try typing or the mic instead.";
+      return;
+    }
+    const caps = await sample.limits().catch(()=>null);
+    if(!caps || !caps.images){
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = "This view can't read photos. Try typing or the mic instead.";
+      return;
+    }
+    const { text } = await sample(
+      'This photo shows one word from a child\'s textbook. Reply with ONLY that single word, lowercase, no punctuation, no extra text. If several words are visible, reply with only the first clear one.',
+      { images: file, modelTier: 'quick', cache: false }
+    );
+    const cleaned = (text || '').trim().split(/\s+/)[0].replace(/[^a-zA-Z]/g,'');
+    if(cleaned){
+      input.value = cleaned;
+      statusDiv.style.color = '#43aa8b';
+      statusDiv.textContent = 'Read from photo: "' + cleaned + '"';
+      run();
+    } else {
+      statusDiv.style.color = '#d64550';
+      statusDiv.textContent = "Couldn't read a word in that photo. Try a clearer, closer photo.";
+    }
+  }catch(e){
+    statusDiv.style.color = '#d64550';
+    if(e && e.code === 'not_granted'){
+      statusDiv.textContent = 'Photo reading needs permission — tap the camera button again and allow it.';
+    } else if(e && e.code === 'image_rejected'){
+      statusDiv.textContent = "That photo couldn't be used. Try a clearer photo.";
+    } else {
+      statusDiv.textContent = "Couldn't read the photo right now. Please try again.";
+    }
+  }
+});
+</script>
+</body>
+</html>
